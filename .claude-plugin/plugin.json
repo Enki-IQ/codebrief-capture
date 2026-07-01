@@ -1,0 +1,7 @@
+{
+  "name": "codebrief-capture",
+  "description": "Codebrief intent capture — distills developer intent locally at session end and sends only derived annotations (never code) to your Codebrief workspace.",
+  "version": "0.3.0",
+  "author": { "name": "Codebrief" },
+  "homepage": "https://codebrief.ai"
+}

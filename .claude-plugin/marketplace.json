@@ -1,0 +1,8 @@
+{
+  "name": "codebrief",
+  "owner": { "name": "Codebrief", "email": "support@codebrief.ai" },
+  "metadata": { "description": "Codebrief plugins for Claude Code" },
+  "plugins": [
+    { "name": "codebrief-capture", "source": "./", "version": "0.5.0", "author": { "name": "Codebrief" } }
+  ]
+}

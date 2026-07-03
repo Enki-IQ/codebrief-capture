@@ -1,0 +1,31 @@
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node --no-warnings=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/session-end-hook.js\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git push *)",
+            "command": "node --no-warnings=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/push-capture-hook.js\""
+          },
+          {
+            "type": "command",
+            "if": "Bash(gh pr create *)",
+            "command": "node --no-warnings=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/push-capture-hook.js\""
+          }
+        ]
+      }
+    ]
+  }
+}

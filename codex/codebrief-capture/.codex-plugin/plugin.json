@@ -1,0 +1,25 @@
+{
+  "name": "codebrief-capture",
+  "version": "0.7.0",
+  "description": "Distills developer intent with Codex and sends only scrubbed derived annotations to Codebrief.",
+  "author": {
+    "name": "Codebrief",
+    "email": "support@codebrief.ai",
+    "url": "https://codebrief.ai"
+  },
+  "homepage": "https://codebrief.ai",
+  "repository": "https://github.com/Enki-IQ/codebrief-capture",
+  "keywords": ["codebrief", "intent", "codex", "documentation"],
+  "skills": "skills",
+  "interface": {
+    "displayName": "Codebrief Capture",
+    "shortDescription": "Capture scrubbed development intent from Codex sessions",
+    "longDescription": "Distill decisions, plans, deferrals, and constraints from enabled Codex repositories, then send only bounded and scrubbed intent annotations to your Codebrief workspace.",
+    "developerName": "Codebrief",
+    "category": "Developer Tools",
+    "capabilities": ["Background capture", "Repository configuration", "Secure login"],
+    "websiteURL": "https://codebrief.ai",
+    "brandColor": "#131722",
+    "defaultPrompt": "Show my Codebrief Capture status and enabled repositories."
+  }
+}

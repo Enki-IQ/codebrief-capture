@@ -1,0 +1,9 @@
+{
+  "name": "codebrief-capture-codex",
+  "version": "0.7.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}

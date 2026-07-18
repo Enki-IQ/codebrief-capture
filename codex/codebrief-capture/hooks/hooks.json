@@ -1,0 +1,32 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node --no-warnings=ExperimentalWarning \"${PLUGIN_ROOT}/scripts/codex-stop-hook.js\"",
+            "async": true,
+            "timeout": 180,
+            "statusMessage": "Scheduling Codebrief intent capture"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node --no-warnings=ExperimentalWarning \"${PLUGIN_ROOT}/scripts/codex-post-tool-hook.js\"",
+            "async": true,
+            "timeout": 180,
+            "statusMessage": "Capturing Codebrief intent after publish"
+          }
+        ]
+      }
+    ]
+  }
+}

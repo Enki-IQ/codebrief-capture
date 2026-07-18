@@ -1,0 +1,11 @@
+{
+  "name": "codebrief-capture",
+  "version": "0.7.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:codex": "node scripts/build-codex-package.js",
+    "check:codex": "node scripts/build-codex-package.js --check && node scripts/validate-package.js",
+    "test": "node --test && npm run check:codex"
+  }
+}

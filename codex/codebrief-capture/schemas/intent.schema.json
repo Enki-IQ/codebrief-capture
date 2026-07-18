@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["records"],
+  "properties": {
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "summary", "sourceType", "sourceRef", "anchor"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["decision", "plan", "deferral", "constraint"]
+          },
+          "summary": { "type": "string", "maxLength": 400 },
+          "sourceType": { "type": "string", "enum": ["session", "commit"] },
+          "sourceRef": { "type": "string" },
+          "anchor": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "required": ["symbol", "path", "startLine", "endLine"],
+            "properties": {
+              "symbol": { "type": ["string", "null"] },
+              "path": { "type": ["string", "null"] },
+              "startLine": { "type": ["integer", "null"] },
+              "endLine": { "type": ["integer", "null"] }
+            }
+          }
+        }
+      }
+    }
+  }
+}

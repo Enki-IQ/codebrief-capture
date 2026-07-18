@@ -1,0 +1,20 @@
+{
+  "name": "codebrief",
+  "interface": {
+    "displayName": "Codebrief"
+  },
+  "plugins": [
+    {
+      "name": "codebrief-capture",
+      "source": {
+        "source": "local",
+        "path": "./codex/codebrief-capture"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

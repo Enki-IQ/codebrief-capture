@@ -11,7 +11,7 @@ export class IngestError extends Error {
 }
 
 /** POST a scrubbed intent batch authenticated by the Clerk API key. No refresh — Clerk keys don't rotate. */
-export async function postIntent({ apiBaseUrl, apiKey, repoFullName, records, fetchImpl = fetch, timeoutMs = 10_000 }) {
+export async function postIntent({ apiBaseUrl, apiKey, repoFullName, records, capture, fetchImpl = fetch, timeoutMs = 10_000 }) {
   // Bound the request so a network hang can't stall session-end indefinitely.
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -19,7 +19,7 @@ export async function postIntent({ apiBaseUrl, apiKey, repoFullName, records, fe
     const res = await fetchImpl(codebriefApiUrl(apiBaseUrl, "/api/intent/ingest"), {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ repo: { fullName: repoFullName }, records }),
+      body: JSON.stringify({ repo: { fullName: repoFullName }, records, ...(capture ? { capture } : {}) }),
       signal: controller.signal,
     });
     if (!res.ok) {

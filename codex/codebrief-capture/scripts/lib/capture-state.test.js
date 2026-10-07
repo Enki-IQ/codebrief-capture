@@ -26,6 +26,26 @@ test("a completed fingerprint deduplicates later generations", () => {
   assert.equal(wasCaptured(changed), false);
 });
 
+test("content and completion markers are independent for one fingerprint", () => {
+  const ticket = beginCapture(input, { stat, generation: () => "first" });
+  markCaptured(ticket, "content");
+  assert.equal(wasCaptured(ticket, "content"), true);
+  assert.equal(wasCaptured(ticket, "complete"), false);
+  markCaptured(ticket, "complete");
+  assert.equal(wasCaptured(ticket, "complete"), true);
+});
+
+test("rolling captures reuse one opaque source ref even when no host session id exists", () => {
+  const rollingInput = { transcript_path: "/rolling.jsonl" };
+  const first = beginCapture(rollingInput, { stat, generation: () => "first" });
+  const changed = beginCapture(rollingInput, {
+    stat: () => ({ size: 101, mtimeMs: 201 }),
+    generation: () => "changed",
+  });
+  assert.match(first.sourceRef, /^capture-[0-9a-f-]{36}$/);
+  assert.equal(changed.sourceRef, first.sourceRef);
+});
+
 test("marking an older fingerprint cannot overwrite the active generation", () => {
   const first = beginCapture(input, { stat, generation: () => "first" });
   const second = beginCapture(input, {

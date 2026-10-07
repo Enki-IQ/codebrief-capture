@@ -10,14 +10,9 @@ function configPath() { return join(configDir(), "config.json"); }
 
 const DEFAULTS = {
   apiBaseUrl: CODEBRIEF_API_BASE_URL,
-  // Model the local `claude -p` distill runs under (the USER's own Anthropic spend, every session;
-  // Codebrief is never billed). Defaults to `sonnet`; override via config ("distillModel") or
-  // CODEBRIEF_DISTILL_MODEL (e.g. "haiku").
-  distillModel: process.env.CODEBRIEF_DISTILL_MODEL || "sonnet",
-  // Codex defaults to the user's configured model. These optional settings affect only the
-  // ephemeral Codex distillation child, never the primary coding session.
-  codexDistillModel: process.env.CODEBRIEF_CODEX_DISTILL_MODEL || "",
-  codexDistillReasoningEffort: process.env.CODEBRIEF_CODEX_REASONING_EFFORT || "low",
+  // One Gemini model for every capture host. Non-Gemini ids are ignored.
+  // Override via distillModel or CODEBRIEF_DISTILL_MODEL.
+  distillModel: process.env.CODEBRIEF_DISTILL_MODEL || "gemini-3.8-flash",
   codexDebounceMs: 45_000,
 };
 
@@ -45,8 +40,6 @@ export function loadConfig() {
     // Defensive: a hand-edited/corrupt config must not crash command paths that assume these shapes.
     if (!Array.isArray(cfg.enabledRepos)) cfg.enabledRepos = [];
     cfg.apiBaseUrl = safeApiBaseUrl(cfg.apiBaseUrl, base.apiBaseUrl);
-    if (typeof cfg.codexDistillModel !== "string") cfg.codexDistillModel = DEFAULTS.codexDistillModel;
-    if (typeof cfg.codexDistillReasoningEffort !== "string" || !cfg.codexDistillReasoningEffort) cfg.codexDistillReasoningEffort = DEFAULTS.codexDistillReasoningEffort;
     if (!Number.isFinite(cfg.codexDebounceMs) || cfg.codexDebounceMs < 0) cfg.codexDebounceMs = base.codexDebounceMs;
     return cfg;
   } catch { return defaults(); }

@@ -4,16 +4,43 @@ import { shouldCaptureAfterTool } from "./lib/command-trigger.js";
 import { beginCapture, markCaptured, wasCaptured } from "./lib/capture-state.js";
 import { readHookInput, shouldRememberCapture } from "./lib/hook-input.js";
 import { runCodexCapture } from "./codex-capture.js";
+import { runActiveProjectTurn } from "./codex-active-project-return.js";
 
 export async function handleCodexPostTool(input, deps = {}) {
-  const d = { shouldCaptureAfterTool, beginCapture, wasCaptured, markCaptured, runCodexCapture, ...deps };
+  const d = {
+    shouldCaptureAfterTool,
+    beginCapture,
+    wasCaptured,
+    markCaptured,
+    runCodexCapture,
+    runActiveProjectTurn,
+    ...deps,
+  };
   try {
     if (!d.shouldCaptureAfterTool(input)) return { status: "skipped:not-trigger" };
+    let activeProject;
+    try {
+      activeProject = Promise.resolve(d.runActiveProjectTurn(input, { reason: "publish" }))
+        .catch(() => ({ status: "error" }));
+    } catch {
+      activeProject = Promise.resolve({ status: "error" });
+    }
     const ticket = d.beginCapture(input);
-    if (!ticket) return { status: "skipped:no-transcript" };
-    if (d.wasCaptured(ticket)) return { status: "skipped:duplicate" };
-    const result = await d.runCodexCapture({ input });
-    if (shouldRememberCapture(result.status)) d.markCaptured(ticket);
+    if (!ticket) {
+      await activeProject;
+      return { status: "skipped:no-transcript" };
+    }
+    if (d.wasCaptured(ticket, "content")) {
+      await activeProject;
+      return { status: "skipped:duplicate" };
+    }
+    const result = await d.runCodexCapture({ input: {
+      ...input,
+      capture_id: ticket.sourceRef,
+      capture_state: "in_progress",
+    } });
+    await activeProject;
+    if (shouldRememberCapture(result.status)) d.markCaptured(ticket, "content");
     return result;
   } catch {
     return { status: "error" };

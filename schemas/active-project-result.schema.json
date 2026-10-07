@@ -1,0 +1,54 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["terminal", "result"],
+  "properties": {
+    "terminal": { "type": "boolean" },
+    "result": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["schemaVersion", "outcome", "checks", "references", "blockers"],
+      "properties": {
+        "schemaVersion": { "type": "integer", "const": 2 },
+        "outcome": {
+          "type": "string",
+          "enum": ["completed", "partial", "blocked", "no_change"]
+        },
+        "checks": {
+          "type": "array",
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "status"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["tests", "lint", "types", "build", "review"]
+              },
+              "status": {
+                "type": "string",
+                "enum": ["passed", "failed", "not_run"]
+              }
+            }
+          }
+        },
+        "references": {
+          "type": "array",
+          "maxItems": 0,
+          "items": { "type": "null" }
+        },
+        "blockers": {
+          "type": "array",
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["dependency", "permissions", "environment", "review", "unknown"]
+          }
+        }
+      }
+    }
+  }
+}

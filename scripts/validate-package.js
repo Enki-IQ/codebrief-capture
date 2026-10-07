@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -76,14 +76,92 @@ if (marketEntry?.policy?.installation !== "AVAILABLE" || marketEntry?.policy?.au
   errors.push("Codex marketplace policy is incomplete");
 }
 
-const skillsRoot = join(root, "codex", "codebrief-capture", "skills");
-for (const name of readdirSync(skillsRoot)) {
-  const path = join(skillsRoot, name, "SKILL.md");
-  let text;
-  try { text = readFileSync(path, "utf8"); } catch { errors.push(`${name} is missing SKILL.md`); continue; }
-  if (!text.startsWith("---\n") || !/^name:\s*\S+/m.test(text) || !/^description:\s*\S+/m.test(text)) {
-    errors.push(`${name}/SKILL.md has invalid frontmatter`);
+const skillRoots = [
+  ["Claude", join(root, "skills")],
+  ["Codex", join(root, "codex", "codebrief-capture", "skills")],
+];
+const requiredSkills = ["codebrief-work", "codebrief-return"];
+for (const [host, skillsRoot] of skillRoots) {
+  for (const name of requiredSkills) {
+    if (!existsSync(join(skillsRoot, name, "SKILL.md"))) {
+      errors.push(`${host} ${name} is required`);
+    }
   }
+  for (const name of readdirSync(skillsRoot)) {
+    const path = join(skillsRoot, name, "SKILL.md");
+    let text;
+    try { text = readFileSync(path, "utf8"); } catch {
+      errors.push(`${host} ${name} is missing SKILL.md`);
+      continue;
+    }
+    const declaredName = text.match(/^name:\s*([A-Za-z0-9-]+)\s*$/m)?.[1];
+    if (!text.startsWith("---\n") || !declaredName || !/^description:\s*\S+/m.test(text)) {
+      errors.push(`${host} ${name}/SKILL.md has invalid frontmatter`);
+    } else if (declaredName !== name) {
+      errors.push(`${host} ${name}: skill frontmatter name must match directory`);
+    }
+  }
+}
+
+for (const relativePath of [
+  "scripts/active-project-return.js",
+  "scripts/session-end-hook.js",
+  "scripts/push-capture-hook.js",
+  "codex/codebrief-capture/scripts/codex-active-project-return.js",
+  "codex/codebrief-capture/scripts/codex-stop-hook.js",
+  "codex/codebrief-capture/scripts/codex-post-tool-hook.js",
+]) {
+  if (!existsSync(join(root, relativePath))) {
+    errors.push(`${relativePath}: required script is missing`);
+  }
+}
+
+const generatedSharedFiles = [
+  "agent-inbox.js",
+  "connected-agent-state.js",
+  "connected-agent-client.js",
+  "native-agent-runtime.js",
+  "api-url.js",
+  "active-project-client.js",
+  "browser-login.js",
+  "capture.js",
+  "capture-state.js",
+  "command-trigger.js",
+  "config.js",
+  "credentials.js",
+  "http.js",
+  "handoff-result.js",
+  "handoff-state.js",
+  "login-mode.js",
+  "model-complete.js",
+  "preflight.js",
+  "read-key.js",
+  "repo.js",
+  "scrub.js",
+];
+for (const filename of generatedSharedFiles) {
+  try {
+    const canonical = readFileSync(join(root, "scripts", "lib", filename));
+    const generated = readFileSync(
+      join(root, "codex", "codebrief-capture", "scripts", "lib", filename),
+    );
+    if (!canonical.equals(generated)) {
+      errors.push(`${filename}: generated shared file is stale`);
+    }
+  } catch {
+    errors.push(`${filename}: generated shared file is stale or missing`);
+  }
+}
+try {
+  const canonical = readFileSync(join(root, "schemas", "active-project-result.schema.json"));
+  const generated = readFileSync(
+    join(root, "codex", "codebrief-capture", "schemas", "active-project-result.schema.json"),
+  );
+  if (!canonical.equals(generated)) {
+    errors.push("active-project-result.schema.json: generated schema is stale");
+  }
+} catch {
+  errors.push("active-project-result.schema.json: generated schema is stale or missing");
 }
 
 const codexPostToolUse = codexHooks.hooks?.PostToolUse;
@@ -97,9 +175,17 @@ const claudePostToolUse = claudeHooks.hooks?.PostToolUse;
 const claudePostHandlers = Array.isArray(claudePostToolUse)
   ? claudePostToolUse.flatMap((entry) => Array.isArray(entry?.hooks) ? entry.hooks : [])
   : [];
-if (claudePostToolUse?.length !== 1 || claudePostHandlers.length !== 1
-    || claudePostHandlers.some((handler) => "if" in handler)) {
-  errors.push("Claude PostToolUse must have one in-process-filtered handler and no unsupported if field");
+if (claudePostToolUse?.length !== 2 || claudePostHandlers.length !== 2
+    || claudePostHandlers.some(handler=>"if" in handler)
+    || claudePostToolUse[0].matcher!=="Bash"
+    || !claudePostHandlers[0].command.endsWith('/scripts/push-capture-hook.js"')
+    || !claudePostHandlers[1].command.endsWith('/scripts/agent-message-hook.js"')
+    || claudePostHandlers[1].timeout!==6) {
+  errors.push("Claude PostToolUse must preserve Bash capture and one bounded request-ID checkpoint handler");
+}
+for(const event of ["SessionStart","UserPromptSubmit"]){
+ const handlers=claudeHooks.hooks?.[event]?.flatMap(entry=>entry.hooks??[]);
+ if(handlers?.length!==1||handlers[0].timeout!==6||!handlers[0].command.endsWith('/scripts/agent-message-hook.js"'))errors.push(`${event}: bounded request-ID notification hook missing`);
 }
 
 for (const path of walkFiles(join(root, "codex", "codebrief-capture"))) {

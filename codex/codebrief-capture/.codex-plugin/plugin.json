@@ -1,6 +1,6 @@
 {
   "name": "codebrief-capture",
-  "version": "0.7.0",
+  "version": "0.9.1",
   "description": "Distills developer intent with Codex and sends only scrubbed derived annotations to Codebrief.",
   "author": {
     "name": "Codebrief",

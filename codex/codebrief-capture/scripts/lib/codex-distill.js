@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { completeStructured } from "./model-complete.js";
 import { readRolloutTail, reduceCodexRollout } from "./transcript-reducer.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
@@ -27,52 +28,19 @@ export function buildCodexPrompt({ fullName, commitSha, sessionId }) {
   ].join("\n");
 }
 
-export function buildCodexDistillArgs({ fullName, commitSha, sessionId, model = "", reasoningEffort = "low", schemaPath = INTENT_SCHEMA_PATH }) {
-  const args = [
-    "exec",
-    "--ephemeral",
-    "--ignore-rules",
-    "--disable", "hooks",
-    "--disable", "plugins",
-    "--skip-git-repo-check",
-    "-s", "read-only",
-    "-c", "mcp_servers={}",
-    "--color", "never",
-    "--output-schema", schemaPath,
-  ];
-  const allowedEfforts = new Set(["minimal", "low", "medium", "high", "xhigh"]);
-  if (allowedEfforts.has(reasoningEffort)) args.push("-c", `model_reasoning_effort=\"${reasoningEffort}\"`);
-  if (model) args.push("--model", model);
-  args.push(buildCodexPrompt({ fullName, commitSha, sessionId }));
-  return args;
-}
-
-export function parseCodexDistillOutput(stdout) {
-  try {
-    const value = JSON.parse(stdout);
-    return Array.isArray(value?.records) ? value.records : [];
-  } catch {
-    return [];
-  }
-}
-
-export function distillWithCodex({ transcriptPath, fullName, commitSha, sessionId, model = "", reasoningEffort = "low", spawn = spawnSync, timeoutMs = 120_000 }) {
+export function distillWithCodex({ transcriptPath, fullName, commitSha, sessionId, model, command, spawn = spawnSync, timeoutMs = 120_000 }) {
   const reduced = reduceCodexRollout(readRolloutTail(transcriptPath));
   if (!reduced) return [];
-  const args = buildCodexDistillArgs({ fullName, commitSha, sessionId, model, reasoningEffort });
-  const result = spawn("codex", args, {
-    cwd: tmpdir(),
+  const schema = JSON.parse(readFileSync(INTENT_SCHEMA_PATH, "utf8"));
+  const parsed = completeStructured({
+    prompt: buildCodexPrompt({ fullName, commitSha, sessionId }),
     input: reduced,
-    encoding: "utf8",
-    maxBuffer: 8 * 1024 * 1024,
-    timeout: timeoutMs,
-    env: { ...process.env, CODEBRIEF_DISTILL_CHILD: "1" },
+    schema,
+    model,
+    command,
+    spawn,
+    timeoutMs,
   });
-  if (result.status !== 0 || !result.stdout) {
-    if (process.env.CODEBRIEF_DEBUG) {
-      console.error(`[codebrief] distill: codex exited status=${result.status} signal=${result.signal ?? "none"} error=${result.error?.name ?? "none"}`);
-    }
-    return [];
-  }
-  return parseCodexDistillOutput(result.stdout.trim());
+  if (!parsed || !Array.isArray(parsed.records)) return [];
+  return parsed.records;
 }

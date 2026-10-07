@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { shouldCaptureAfterTool } from "./lib/command-trigger.js";
+import { readHookInput } from "./lib/hook-input.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -22,7 +23,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 export function spawnDetachedCapture(input, spawnFn = spawn, onDone = () => {}) {
   const child = spawnFn(
     process.execPath,
-    ["--no-warnings=ExperimentalWarning", join(__dirname, "session-end-hook.js")],
+    [
+      "--no-warnings=ExperimentalWarning",
+      join(__dirname, "session-end-hook.js"),
+      "--background",
+      "--publish",
+    ],
     { detached: true, stdio: ["pipe", "ignore", "ignore"] },
   );
   child.on("error", onDone); // e.g. spawn itself failed (ENOENT/EACCES) before stdin ever opens
@@ -32,6 +38,7 @@ export function spawnDetachedCapture(input, spawnFn = spawn, onDone = () => {}) 
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  if (process.env.CODEBRIEF_DISTILL_CHILD === "1") process.exit(0);
   // One safety net over the WHOLE flow (stdin read + spawn + payload write): the happy path
   // exits the moment the write completes (well under this), but if anything hangs — the hook
   // framework never closes our stdin, the spawn call blocks, the write never flushes — this
@@ -41,12 +48,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   forceExit.unref();
   const done = () => { clearTimeout(forceExit); process.exit(0); };
 
-  let buf = "";
-  process.stdin.on("data", (c) => (buf += c));
-  process.stdin.on("end", () => {
-    let input = {};
-    try { input = JSON.parse(buf); } catch { /* no input */ }
-    if (!shouldCaptureAfterTool(input)) return done();
+  const input = await readHookInput();
+  if (!shouldCaptureAfterTool(input)) done();
+  else {
     try { spawnDetachedCapture(input, spawn, done); } catch { done(); }
-  });
+  }
 }

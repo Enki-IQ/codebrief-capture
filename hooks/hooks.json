@@ -19,6 +19,37 @@
             "command": "node --no-warnings=ExperimentalWarning \"${CLAUDE_PLUGIN_ROOT}/scripts/push-capture-hook.js\""
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/agent-message-hook.js\"",
+            "timeout": 6
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/agent-message-hook.js\"",
+            "timeout": 6
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/agent-message-hook.js\"",
+            "timeout": 6
+          }
+        ]
       }
     ]
   }

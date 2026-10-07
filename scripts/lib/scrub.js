@@ -5,6 +5,14 @@ const SECRET = [
   /AKIA[0-9A-Z]{16}/, /AIza[0-9A-Za-z\-_]{35}/, /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
   /\bsk-[A-Za-z0-9_-]{20,}/, /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/,
   /\bck_(?:live|test)_[A-Za-z0-9_-]{10,}\b/, // Clerk API keys — this plugin's own egress credential
+  /\bgh[pousr]_[A-Za-z0-9]{20,}\b/,
+  /\bgithub_pat_[A-Za-z0-9_]{20,}\b/,
+  /\bglpat-[A-Za-z0-9_-]{20,}\b/,
+  /\bnpm_[A-Za-z0-9]{20,}\b/,
+  /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b/,
+  /\bASIA[0-9A-Z]{16}\b/,
+  /\bxox[baprs]-[A-Za-z0-9-]{20,}\b/,
+  /\bAuthorization\s*:\s*(?:Bearer|Basic)\s+[A-Za-z0-9+/_=.\-]{8,}/i,
   /\b[a-z][a-z0-9+.\-]*:\/\/[^\s:@/]+:[^\s:@/]+@/,
 ];
 
@@ -15,7 +23,10 @@ export function scrubTranscriptText(value) {
     .replace(/```[\s\S]*?```|```[\s\S]*$/g, "[redacted code]")
     .replace(/-----BEGIN ([A-Z ]*PRIVATE KEY)-----[\s\S]*?-----END \1-----/g, "[redacted secret]");
   for (const pattern of SECRET) {
-    clean = clean.replace(new RegExp(pattern.source, "g"), "[redacted secret]");
+    clean = clean.replace(
+      new RegExp(pattern.source, pattern.ignoreCase ? "gi" : "g"),
+      "[redacted secret]",
+    );
   }
   return clean;
 }
@@ -29,9 +40,19 @@ export function preScrub(summary) {
 }
 
 export function preScrubMetadata(value, maxLength) {
-  if (typeof value !== "string" || !value || value.length > maxLength) return undefined;
-  if (/[\u0000-\u001f\u007f]/.test(value) || value.includes("```")) return undefined;
-  for (const pattern of SECRET) if (pattern.test(value)) return undefined;
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  if (!normalized || normalized.length > maxLength) return undefined;
+  if (/[\u0000-\u001f\u007f]/.test(normalized) || normalized.includes("```")) return undefined;
+  for (const pattern of SECRET) if (pattern.test(normalized)) return undefined;
+  return normalized;
+}
+
+/** Exact server-compatible contract for opaque Session capture provenance. */
+export function normalizeSourceRef(value) {
+  if (typeof value !== "string") return undefined;
+  if (!value.trim() || value.length > 200) return undefined;
+  if (/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/.test(value)) return undefined;
   return value;
 }
 
@@ -54,7 +75,7 @@ export function preScrubRecords(records) {
     if (!record || typeof record !== "object" || !KINDS.has(record.kind) || !preScrub(record.summary).ok) return [];
     const clean = { kind: record.kind, summary: record.summary };
     if (SOURCE_TYPES.has(record.sourceType)) clean.sourceType = record.sourceType;
-    const sourceRef = preScrubMetadata(record.sourceRef, 200);
+    const sourceRef = normalizeSourceRef(record.sourceRef);
     if (sourceRef) clean.sourceRef = sourceRef;
     const anchor = scrubAnchor(record.anchor);
     if (anchor) clean.anchor = anchor;

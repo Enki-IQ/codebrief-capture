@@ -1,25 +1,25 @@
 import { runCaptureCore } from "./lib/capture.js";
 import { distillWithCodex } from "./lib/codex-distill.js";
-import { isCodexAvailable as realIsCodexAvailable } from "./lib/preflight.js";
+import { isDistillerAvailable as realIsDistillerAvailable } from "./lib/preflight.js";
 
-/** Codex adapter around the shared authenticated ingest orchestration. */
+/** Codex host adapter. Transcript reduction stays host-specific; the model call does not. */
 export function runCodexCapture({ input, deps = {} }) {
-  const { isCodexAvailable, ...coreDeps } = deps;
+  const { isDistillerAvailable, ...coreDeps } = deps;
   return runCaptureCore({
     input,
+    captureHost: "codex",
     distiller: {
       distill: distillWithCodex,
-      isAvailable: realIsCodexAvailable,
+      isAvailable: realIsDistillerAvailable,
       optionsFromConfig: (cfg) => ({
-        model: cfg.codexDistillModel,
-        reasoningEffort: cfg.codexDistillReasoningEffort,
+        model: cfg.distillModel,
       }),
-      unavailableStatus: "skipped:no-codex",
-      unavailableMessage: "[codebrief] `codex` CLI not found on PATH - cannot distill intent. Install Codex or add it to PATH.",
+      unavailableStatus: "skipped:no-model",
+      unavailableMessage: "[codebrief] model CLI not found on PATH - cannot distill intent. Install the configured capture model CLI (default `gemini`) or set CODEBRIEF_DISTILL_COMMAND.",
     },
     deps: {
       ...coreDeps,
-      ...(isCodexAvailable ? { isDistillerAvailable: isCodexAvailable } : {}),
+      ...(isDistillerAvailable ? { isDistillerAvailable } : {}),
     },
   });
 }

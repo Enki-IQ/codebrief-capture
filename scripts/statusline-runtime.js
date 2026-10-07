@@ -130,13 +130,16 @@ function isMainModule() {
 }
 
 if (isMainModule()) {
-  let buf = "";
-  process.stdin.on("data", (c) => (buf += c));
-  process.stdin.on("end", async () => {
+  // for-await handles the race where spawnSync already closed stdin before listeners attach
+  // (seen as empty stdout on CI for the symlink entrypoint regression test).
+  (async () => {
+    const chunks = [];
+    for await (const chunk of process.stdin) chunks.push(chunk);
+    const buf = Buffer.concat(chunks.map((c) => Buffer.isBuffer(c) ? c : Buffer.from(c))).toString("utf8");
     let input = {};
-    try { input = JSON.parse(buf); } catch { /* no input */ }
+    try { input = JSON.parse(buf || "{}"); } catch { /* no input */ }
     const out = await renderStatusLine({ input });
     process.stdout.write(out);
     process.exit(0);
-  });
+  })().catch(() => process.exit(0));
 }

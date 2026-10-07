@@ -10,12 +10,16 @@ test("postIntent posts the batch with a Bearer key and returns the report", asyn
   };
   const out = await postIntent({
     apiBaseUrl: "https://app.codebrief.ai", apiKey: "ck_live_abc",
-    repoFullName: "a/b", records: [{ kind: "decision" }], fetchImpl,
+    repoFullName: "a/b", records: [{ kind: "decision" }],
+    capture: { version: 1, host: "claude", state: "complete" }, fetchImpl,
   });
   assert.equal(out.accepted, 1);
   assert.equal(seen.url, "https://app.codebrief.ai/api/intent/ingest");
   assert.equal(seen.opts.headers.authorization, "Bearer ck_live_abc");
-  assert.deepEqual(JSON.parse(seen.opts.body), { repo: { fullName: "a/b" }, records: [{ kind: "decision" }] });
+  assert.deepEqual(JSON.parse(seen.opts.body), {
+    repo: { fullName: "a/b" }, records: [{ kind: "decision" }],
+    capture: { version: 1, host: "claude", state: "complete" },
+  });
 });
 
 test("postIntent throws IngestError(401) when the key is invalid/revoked/expired", async () => {

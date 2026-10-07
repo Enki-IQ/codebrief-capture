@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { INTENT_SCHEMA, buildPrompt, buildDistillArgs, parseDistillOutput, distill, truncateTranscriptForStdin } from "./distill.js";
 
-test("schema is a top-level object wrapping records[] (Claude Code --json-schema requires object)", () => {
+test("schema is a top-level object wrapping records[]", () => {
   assert.equal(INTENT_SCHEMA.type, "object");
   assert.deepEqual(INTENT_SCHEMA.properties.records.items.properties.kind.enum, ["decision", "plan", "deferral", "constraint"]);
 });
@@ -29,16 +29,13 @@ test("parseDistillOutput unwraps the --output-format json envelope and tolerates
   assert.equal(parseDistillOutput("garbage").length, 0);
 });
 
-// Regression guard for the spike #4 fixes (Claude Code 2.1.185): lock the invocation contract so a
-// future flag regression fails the suite instead of silently producing an inert distiller.
-test("buildDistillArgs: object schema, json output, no unsupported --max-turns flag", () => {
+test("buildDistillArgs uses Gemini 3.8 Flash and ignores non-Gemini model ids", () => {
   const args = buildDistillArgs({ fullName: "a/b", commitSha: "abc", sessionId: "s", model: "haiku" });
-  const schemaArg = JSON.parse(args[args.indexOf("--json-schema") + 1]);
-  assert.equal(schemaArg.type, "object"); // top-level array is rejected by the API
+  assert.equal(args[0], "--prompt");
   assert.equal(args[args.indexOf("--output-format") + 1], "json");
-  assert.ok(args.includes("--no-session-persistence"));
-  assert.equal(args[args.indexOf("--model") + 1], "haiku");
-  assert.ok(!args.includes("--max-turns")); // not a real flag in 2.1.185
+  assert.equal(args[args.indexOf("--schema-file") + 1], "schema.json");
+  assert.equal(args[args.indexOf("--model") + 1], "gemini-3.8-flash");
+  assert.ok(!args.includes("--max-turns"));
 });
 
 test("distill pipes the transcript on stdin and enforces a timeout (no argv blowup)", () => {
@@ -48,7 +45,7 @@ test("distill pipes the transcript on stdin and enforces a timeout (no argv blow
   let captured = null;
   const fakeSpawn = (cmd, args, opts) => { captured = { cmd, args, opts }; return { status: 0, stdout: '{"structured_output":{"records":[{"kind":"plan"}]}}' }; };
   const recs = distill({ transcriptPath: tp, fullName: "a/b", commitSha: "abc", sessionId: "s", spawn: fakeSpawn });
-  assert.equal(captured.cmd, "claude");
+  assert.equal(captured.cmd, "gemini");
   assert.equal(captured.opts.input, "TRANSCRIPT-BODY"); // transcript on stdin, not in argv
   assert.ok(captured.opts.timeout > 0);
   assert.equal(recs.length, 1);

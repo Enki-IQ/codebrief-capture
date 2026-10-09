@@ -7,19 +7,20 @@ test('launch transport denies broad commands and never sends ordinary Capture AP
  await assert.rejects(()=>launchRelayRequest({...context,operation:'claim',payload:{}}),/unsupported/i);assert.equal(calls,0);
  assert.equal((await launchRelayRequest({...context,operation:'register',payload:{verify:{claim:{},workspaceId:'local'}}})).ownershipVerified,true);assert.equal(calls,1);
 });
-import {mkdtempSync,writeFileSync,mkdirSync,readFileSync,cpSync} from 'node:fs';
+import {mkdtempSync,realpathSync,writeFileSync,mkdirSync,readFileSync,cpSync} from 'node:fs';
 import {tmpdir} from 'node:os';
+const canonicalTempBase=realpathSync(tmpdir());
 import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {randomUUID,createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {buildStandaloneRelease} from '../build-standalone-release.js';
 import {installCaptureRelease} from './release-installation.js';
-const releaseHome=mkdtempSync(join(tmpdir(),'capture-bootstrap-release-'));
+const releaseHome=realpathSync(mkdtempSync(join(canonicalTempBase,'capture-bootstrap-release-')));
 const releaseSource=join(releaseHome,'artifact');
 const releasePin=buildStandaloneRelease({source:fileURLToPath(new URL('../../',import.meta.url)),destination:releaseSource}).manifestSha256;
 installCaptureRelease({source:releaseSource,manifestSha256:releasePin,home:releaseHome});
-const releaseRoot=join(releaseHome,'.codebrief/capture/releases/0.10.1');
+const releaseRoot=join(releaseHome,'.codebrief/capture/releases/0.10.2');
 import {bootstrapConductorCapture} from './conductor-bootstrap.js';
 test('bootstrap rejects absent trusted installation pin before token parsing or network',async()=>{
  let calls=0,tokenReads=0;
@@ -35,12 +36,12 @@ test('bootstrap rejects mismatched trusted pin, incomplete install and self-cons
  };
  await denied(releaseRoot,'f'.repeat(64));await denied(releaseRoot,'ABCDEF'.repeat(11));
  await denied(releaseSource,releasePin); // Manifest bytes alone do not prove completed installation.
- const modified=join(mkdtempSync(join(tmpdir(),'capture-tampered-')),'release');cpSync(releaseRoot,modified,{recursive:true});
+ const modified=join(mkdtempSync(join(canonicalTempBase,'capture-tampered-')),'release');cpSync(releaseRoot,modified,{recursive:true});
  const manifest=JSON.parse(readFileSync(join(modified,'release-manifest.json')));
  const file=manifest.files.find(file=>file.path==='scripts/codebrief-cli.js');const bytes=Buffer.from('self-consistent forged runtime');
  writeFileSync(join(modified,file.path),bytes);file.size=bytes.length;file.sha256=createHash('sha256').update(bytes).digest('hex');
  const manifestBytes=Buffer.from(JSON.stringify(manifest)+'\n'),localHash=createHash('sha256').update(manifestBytes).digest('hex');
- writeFileSync(join(modified,'release-manifest.json'),manifestBytes);writeFileSync(join(modified,'.codebrief-installation.json'),JSON.stringify({schemaVersion:1,version:'0.10.1',manifestSha256:localHash}));
+ writeFileSync(join(modified,'release-manifest.json'),manifestBytes);writeFileSync(join(modified,'.codebrief-installation.json'),JSON.stringify({schemaVersion:1,version:'0.10.2',manifestSha256:localHash}));
  await denied(modified,releasePin);assert.equal(calls,0);assert.equal(tokenReads,0);
 });
 for(const [host,main] of [['claude',claudeMain],['codex',codexMain]])test(`${host} bootstrap CLI denies manually supplied provider IDs`,async()=>{
@@ -49,7 +50,7 @@ for(const [host,main] of [['claude',claudeMain],['codex',codexMain]])test(`${hos
  assert.deepEqual(errors,['usage: codebrief tandem bootstrap']);assert.equal(tokenReads,0);assert.equal(calls,0);
 });
 test('actual bootstrap preserves lost-exchange envelope and scope claim before ready without secret output',async()=>{
- const root=mkdtempSync(join(tmpdir(),'conductor-preflight-')),baseDir=mkdtempSync(join(tmpdir(),'conductor-state-'));
+ const root=mkdtempSync(join(canonicalTempBase,'conductor-preflight-')),baseDir=mkdtempSync(join(canonicalTempBase,'conductor-state-'));
  execFileSync('git',['init',root]);execFileSync('git',['-C',root,'config','user.email','test@example.com']);execFileSync('git',['-C',root,'config','user.name','Test']);mkdirSync(join(root,'src'));writeFileSync(join(root,'src','example.ts'),'ok');execFileSync('git',['-C',root,'add','src/example.ts']);execFileSync('git',['-C',root,'commit','-m','base']);
  const head=execFileSync('git',['-C',root,'rev-parse','HEAD'],{encoding:'utf8'}).trim(),launchId=randomUUID(),instanceId=randomUUID();
  const claim={attemptId:randomUUID(),handoffId:randomUUID(),actionId:randomUUID(),actionVersion:1,instanceId,generation:1,version:2,leaseExpiresAt:new Date(Date.now()+10000).toISOString()};
@@ -69,7 +70,7 @@ test('actual bootstrap preserves lost-exchange envelope and scope claim before r
 
 test('bootstrap reinstall preserves newer claim and unresolved renewal',async()=>{
  const {installConductorSession,readConductorSession}=await import('./tandem-client.js');
- const root=mkdtempSync(join(tmpdir(),'bootstrap-resume-')),options={baseDir:mkdtempSync(join(tmpdir(),'bootstrap-resume-state-'))};
+ const root=mkdtempSync(join(canonicalTempBase,'bootstrap-resume-')),options={baseDir:mkdtempSync(join(canonicalTempBase,'bootstrap-resume-state-'))};
  execFileSync('git',['init','-q',root]);
  const id=randomUUID(),claim={attemptId:randomUUID(),instanceId:randomUUID(),generation:2,version:4};
  const saved={launchId:id,credential:'restricted',workspaceId:'workspace',sessionId:'session',identity:{accountId:randomUUID(),orgId:randomUUID(),repoId:randomUUID()},claim,pendingRenewal:{requestId:randomUUID()}};
@@ -82,7 +83,7 @@ test('bootstrap reinstall preserves newer claim and unresolved renewal',async()=
 import {main as claudeMain} from '../codebrief-cli.js';
 import {main as codexMain} from '../../codex/codebrief-capture/scripts/codebrief-cli.js';
 for(const [host,main] of [['claude',claudeMain],['codex',codexMain]])test(`${host} actual CLI bootstrap heartbeat checkpoint uses only launch credential`,async()=>{
- const root=mkdtempSync(join(tmpdir(),'launch-cli-')),options={baseDir:mkdtempSync(join(tmpdir(),'launch-cli-state-'))};
+ const root=mkdtempSync(join(canonicalTempBase,'launch-cli-')),options={baseDir:mkdtempSync(join(canonicalTempBase,'launch-cli-state-'))};
  execFileSync('git',['init','-q',root]);execFileSync('git',['-C',root,'config','user.email','test@example.com']);execFileSync('git',['-C',root,'config','user.name','Test']);writeFileSync(join(root,'a'),'ok');execFileSync('git',['-C',root,'add','a']);execFileSync('git',['-C',root,'commit','-qm','base']);
  const head=execFileSync('git',['-C',root,'rev-parse','HEAD'],{encoding:'utf8'}).trim(),launchId=randomUUID(),orgId=randomUUID(),instanceId=randomUUID(),credential=`${orgId}.${'r'.repeat(43)}`;
  let claim={attemptId:randomUUID(),handoffId:randomUUID(),actionId:randomUUID(),actionVersion:1,instanceId,generation:1,version:2,leaseExpiresAt:new Date(Date.now()+3600000).toISOString()};
@@ -111,9 +112,9 @@ for(const [host,main] of [['claude',claudeMain],['codex',codexMain]])test(`${hos
 });
 
 test('receipt wait expires within bounded preflight window without leaking provider error',async()=>{
- const root=mkdtempSync(join(tmpdir(),'bootstrap-timeout-'));execFileSync('git',['init','-q',root]);execFileSync('git',['-C',root,'config','user.email','test@example.com']);execFileSync('git',['-C',root,'config','user.name','Test']);writeFileSync(join(root,'a'),'ok');execFileSync('git',['-C',root,'add','a']);execFileSync('git',['-C',root,'commit','-qm','base']);
+ const root=mkdtempSync(join(canonicalTempBase,'bootstrap-timeout-'));execFileSync('git',['init','-q',root]);execFileSync('git',['-C',root,'config','user.email','test@example.com']);execFileSync('git',['-C',root,'config','user.name','Test']);writeFileSync(join(root,'a'),'ok');execFileSync('git',['-C',root,'add','a']);execFileSync('git',['-C',root,'commit','-qm','base']);
  const head=execFileSync('git',['-C',root,'rev-parse','HEAD'],{encoding:'utf8'}).trim();let ticks=0,calls=0;
- await assert.rejects(()=>bootstrapConductorCapture({releaseRoot,root,options:{baseDir:mkdtempSync(join(tmpdir(),'bootstrap-timeout-state-'))},workspaceId:'workspace',sessionId:'session',env:{CODEBRIEF_CAPTURE_RELEASE_MANIFEST_SHA256:releasePin,CODEBRIEF_LAUNCH_ID:randomUUID(),CODEBRIEF_EXPECTED_SHA:head,CODEBRIEF_BOOTSTRAP_TOKEN:`${randomUUID()}.${'t'.repeat(43)}`,CODEBRIEF_API_ORIGIN:'https://app.codebrief.ai'},now:()=>ticks++?60000:0,fetchImpl:async()=>{calls++;return new Response('secret-provider-details',{status:503});}}),error=>error.status===503&&!error.message.includes('secret-provider-details'));
+ await assert.rejects(()=>bootstrapConductorCapture({releaseRoot,root,options:{baseDir:mkdtempSync(join(canonicalTempBase,'bootstrap-timeout-state-'))},workspaceId:'workspace',sessionId:'session',env:{CODEBRIEF_CAPTURE_RELEASE_MANIFEST_SHA256:releasePin,CODEBRIEF_LAUNCH_ID:randomUUID(),CODEBRIEF_EXPECTED_SHA:head,CODEBRIEF_BOOTSTRAP_TOKEN:`${randomUUID()}.${'t'.repeat(43)}`,CODEBRIEF_API_ORIGIN:'https://app.codebrief.ai'},now:()=>ticks++?60000:0,fetchImpl:async()=>{calls++;return new Response('secret-provider-details',{status:503});}}),error=>error.status===503&&!error.message.includes('secret-provider-details'));
  assert.equal(calls,1);
 });
 
@@ -125,7 +126,7 @@ test('exchange response rejects foreign credential namespace and malformed autho
 });
 
 for(const [host,main] of [['claude',claudeMain],['codex',codexMain]])test(`${host} actual review bootstrap freezes original base and rejects dirty revision`,async()=>{
- const root=mkdtempSync(join(tmpdir(),'review-cli-')),options={baseDir:mkdtempSync(join(tmpdir(),'review-cli-state-'))};
+ const root=mkdtempSync(join(canonicalTempBase,'review-cli-')),options={baseDir:mkdtempSync(join(canonicalTempBase,'review-cli-state-'))};
  execFileSync('git',['init','-q',root]);execFileSync('git',['-C',root,'config','user.email','test@example.com']);execFileSync('git',['-C',root,'config','user.name','Test']);writeFileSync(join(root,'a'),'base');execFileSync('git',['-C',root,'add','a']);execFileSync('git',['-C',root,'commit','-qm','base']);const baseSha=execFileSync('git',['-C',root,'rev-parse','HEAD'],{encoding:'utf8'}).trim();writeFileSync(join(root,'a'),'author');execFileSync('git',['-C',root,'commit','-am','author','-q']);const headSha=execFileSync('git',['-C',root,'rev-parse','HEAD'],{encoding:'utf8'}).trim();
  const launchId=randomUUID(),orgId=randomUUID(),instanceId=randomUUID(),credential=`${orgId}.${'r'.repeat(43)}`,claim={attemptId:randomUUID(),handoffId:randomUUID(),actionId:randomUUID(),actionVersion:1,instanceId,generation:1,version:2,leaseExpiresAt:new Date(Date.now()+3600000).toISOString()},authorReceipt={schemaVersion:1,attemptId:randomUUID(),actionVersion:1,authorInstanceId:randomUUID(),generation:1,baseSha,headSha,contractDigest:'a'.repeat(64),evidenceDigest:'b'.repeat(64)};
  let ready=0,scope=0;const errors=[];
@@ -139,7 +140,7 @@ for(const [host,main] of [['claude',claudeMain],['codex',codexMain]])test(`${hos
 
 test('bootstrap reinstall repairs older same-generation scoped claim without losing local state',async()=>{
  const {installConductorSession,readConductorSession}=await import('./tandem-client.js');
- const root=mkdtempSync(join(tmpdir(),'bootstrap-old-')),options={baseDir:mkdtempSync(join(tmpdir(),'bootstrap-old-state-'))};execFileSync('git',['init','-q',root]);
+ const root=mkdtempSync(join(canonicalTempBase,'bootstrap-old-')),options={baseDir:mkdtempSync(join(canonicalTempBase,'bootstrap-old-state-'))};execFileSync('git',['init','-q',root]);
  const claim={attemptId:randomUUID(),instanceId:randomUUID(),generation:1,version:2};
  const saved={launchId:randomUUID(),credential:'restricted',workspaceId:'workspace',sessionId:'session',identity:{accountId:randomUUID(),orgId:randomUUID(),repoId:randomUUID()},claim,canonicalScope:[{kind:'file',path:'a'}]};
  installConductorSession(root,saved,options);installConductorSession(root,{...saved,claim:{...claim,version:3}},options);

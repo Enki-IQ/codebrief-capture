@@ -12,6 +12,8 @@ const sharedFiles = [
   "connected-agent-state.js",
   "connected-agent-client.js",
   "native-agent-runtime.js",
+  "native-turn-adapter.js",
+  "native-turn-consumer.js",
   "conductor-bootstrap.js",
   "release-installation.js",
   "tandem-state.js",

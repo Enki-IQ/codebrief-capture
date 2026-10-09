@@ -15,7 +15,7 @@ import { inspectScope } from './tandem-scope.js';
 function fixture(t) {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'tandem-scope-')));
     t.after(() => rmSync(root, { recursive: true, force: true }));
-    const git = (...args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim();
+    const git = (...args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' } }).trim();
     git('init', '-q');
     mkdirSync(join(root, 'src'));
     writeFileSync(join(root, 'src/a'), 'a');

@@ -35,7 +35,7 @@ export class NativeRuntimeError extends Error {
 function fixedExec(command, args, timeout = 10000) { return new Promise((resolve, reject) => execFile(command, args, { encoding: 'utf8', timeout, maxBuffer: 32768 }, (error, stdout) => { if (error)
     return reject(new NativeRuntimeError('native_unavailable')); resolve(stdout); })); }
 export async function codexRpc(method, params) {
-    if (!['account/read', 'thread/start'].includes(method))
+    if (!['account/read', 'thread/start', 'thread/read'].includes(method))
         throw new NativeRuntimeError('native_method_invalid');
     const child = spawn('codex', ['app-server'], { stdio: ['pipe', 'pipe', 'ignore'] });
     let buffer = '', bytes = 0, finished = false;
@@ -99,3 +99,37 @@ catch {
 } }
 export async function createOwnedThread() { const result = await codexRpc('thread/start', {}), id = result?.thread?.id; if (typeof id !== 'string' || !id || id.length > 255 || /[\x00-\x1f]/.test(id))
     throw new NativeRuntimeError('native_receipt_invalid'); return id; }
+
+// Protocol shape pinned to the locally reviewed stable 0.145.0 bindings.
+const OWNED_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+function safeNativeText(value, limit) { return typeof value === 'string' && value.length > 0 && value.length <= limit && !/[\x00-\x1f\x7f]/.test(value); }
+function validCwd(cwd) { return safeNativeText(cwd, 4096) && cwd.startsWith('/') && !cwd.split('/').some(part => part === '..' || part === '.'); }
+function boundThread(thread, cwd) {
+    if (!thread || !OWNED_UUID.test(thread.id ?? '') || !OWNED_UUID.test(thread.sessionId ?? '') || thread.cwd !== cwd || thread.cliVersion !== '0.145.0')
+        throw new NativeRuntimeError('native_receipt_invalid');
+    return {threadId:thread.id,sessionId:thread.sessionId,cwd,cliVersion:thread.cliVersion};
+}
+export async function createBoundOwnedThread({cwd}, rpc = codexRpc) {
+    if (!validCwd(cwd))
+        throw new NativeRuntimeError('native_scope_invalid');
+    const result = await rpc('thread/start', {cwd,sandbox:'read-only',approvalPolicy:'on-request'});
+    const bound = boundThread(result?.thread,cwd);
+    if (result.cwd !== cwd || result.approvalPolicy !== 'on-request' || result.sandbox?.type !== 'readOnly' || result.sandbox.networkAccess !== false || !safeNativeText(result.model, 128) || !safeNativeText(result.modelProvider, 128))
+        throw new NativeRuntimeError('native_receipt_invalid');
+    return {...bound,model:result.model,modelProvider:result.modelProvider};
+}
+export async function readBoundOwnedThread(bound, rpc = codexRpc) {
+    if (!bound || Object.keys(bound).sort().join(',') !== 'cliVersion,cwd,model,modelProvider,sessionId,threadId' || !validCwd(bound.cwd) || !safeNativeText(bound.model,128) || !safeNativeText(bound.modelProvider,128)) throw new NativeRuntimeError('native_scope_invalid');
+    boundThread({id:bound.threadId,sessionId:bound.sessionId,cwd:bound.cwd,cliVersion:bound.cliVersion},bound.cwd);
+    const result = await rpc('thread/read',{threadId:bound.threadId,includeTurns:false});
+    const actual = boundThread(result?.thread,bound.cwd);
+    if (actual.threadId !== bound.threadId || actual.sessionId !== bound.sessionId)
+        throw new NativeRuntimeError('native_receipt_invalid');
+    return bound;
+}
+
+export async function verifyOwnedThreadProtocol() {
+ const version=await fixedExec('codex',['--version']);
+ if(version.trim()!=='codex-cli 0.145.0')throw new NativeRuntimeError('native_protocol_unavailable');
+ return '0.145.0';
+}

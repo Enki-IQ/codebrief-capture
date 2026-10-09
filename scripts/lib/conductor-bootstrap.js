@@ -90,7 +90,7 @@ export async function bootstrapConductorCapture({workspaceId,sessionId,root=proc
   for(const candidate of candidates){validateBootstrapExchangeResponse({...response,claim:candidate},launchId);if(['attemptId','instanceId','handoffId','actionId','actionVersion'].some(key=>candidate[key]!==response.claim[key]))throw new Error('Invalid scoped Capture claim');}
   const claim=candidates.reduce((latest,candidate)=>candidate.generation>latest.generation||(candidate.generation===latest.generation&&candidate.version>latest.version)?candidate:latest);
   const installed=JSON.parse(readFileSync(new URL("../../package.json",import.meta.url),"utf8"));
-  if(!["codebrief-capture","codebrief-capture-codex"].includes(installed.name)||installed.version!=='0.10.1')throw new Error("Capture version does not support launch preflight");
+  if(!["codebrief-capture","codebrief-capture-codex"].includes(installed.name)||installed.version!=='0.10.2')throw new Error("Capture version does not support launch preflight");
   if(head()!==expectedSha)throw new Error('base_revision_mismatch');
   const installer=install??(await import('./tandem-client.js')).installConductorSession;
   const installedSession=installer(root,{...response,claim,launchId,workspaceId,sessionId,apiOrigin,canonicalScope:scope,reviewRevision:setup.authorReceipt},options);

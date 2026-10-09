@@ -47,7 +47,7 @@ const fetchImpl=async(url,init)=>{
   audit(body,'applied');return Response.json({runtimeId:config.runtimeId,availability:state.paused?'paused':'connected'});
  }
  if(body.operation==='admit'){
-  if(config.denied)return Response.json({},{status:409});const fresh=!state.issued;state.issued=true;if(incoming)state.companion=incoming;if(body.resume)state.paused=false;writeFileSync(serverPath,JSON.stringify(state));audit(body,'applied');return Response.json({sessionId:config.sessionId,createAllowed:fresh,registered:!!state.registered});
+  if(config.denied)return Response.json({},{status:409});const fresh=!state.issued;state.issued=true;if(incoming)state.companion=incoming;if(body.resume)state.paused=false;writeFileSync(serverPath,JSON.stringify(state));audit(body,'applied');if(config.failAdmission)return Response.json({},{status:503});return Response.json({sessionId:config.sessionId,createAllowed:fresh,registered:!!state.registered});
  }
  if(config.failRegistration)return Response.json({},{status:503});if(state.paused)return Response.json({},{status:409});state.registered=true;writeFileSync(serverPath,JSON.stringify(state));audit(body,'applied');return Response.json({sessionId:config.sessionId,registered:true});
 };
@@ -58,7 +58,7 @@ const exit=await main(process.argv.slice(2),{log:value=>{console.log(value);if($
 writeFileSync(${JSON.stringify(fixture.calls)},JSON.stringify(calls));process.exitCode=exit;`);
     const child = spawn(node, [wrapper, ...args], { cwd: fixture.root, env: { ...process.env, PATH: `${fixture.bin}:${process.env.PATH}`, CODEBRIEF_NATIVE_FIXTURE_COUNT: fixture.count, CODEBRIEF_NATIVE_FIXTURE_CONFIG: fixture.config }, stdio: ['pipe', 'pipe', 'pipe'] }); let output = '', error = ''; child.stdout.on('data', c => output += c); child.stderr.on('data', c => error += c); child.stdin.end(hookInput ?? ''); const done = new Promise(resolveResult => child.on('exit', code => resolveResult({ code, output, error }))); return longLived ? { child, done, output: () => output } : done;
 }
-function fixture() { const base = mkdtempSync(join(tmpdir(), 'connected-agent-')), root = join(base, 'repo'), state = join(base, 'private'), bin = join(base, 'bin'); mkdirSync(root); mkdirSync(bin); execFileSync('git', ['init', '-q', root]); const f = { base, root, state, bin, config: join(base, 'fixture.json'), server: join(base, 'server.json'), calls: join(base, 'calls.json'), count: join(base, 'count') }; const config = { runtimeId: randomUUID(), accountId: randomUUID(), orgId: randomUUID(), repoId: randomUUID(), sessionId: randomUUID() }; writeFileSync(f.config, JSON.stringify(config)); writeFileSync(f.server, '{}'); writeFileSync(f.count, '0'); writeFileSync(join(bin, 'claude'), `#!${node}\nimport {readFileSync} from 'node:fs';const config=JSON.parse(readFileSync(process.env.CODEBRIEF_NATIVE_FIXTURE_CONFIG,'utf8'));if(config.delayNativePid===process.ppid)await new Promise(resolve=>setTimeout(resolve,750));console.log(JSON.stringify({loggedIn:true,authMethod:'claude.ai',accessToken:'never-export'}));\n`, { mode: 0o700 }); writeFileSync(join(bin, 'codex'), `#!${node}\nimport {createInterface} from 'node:readline';import {readFileSync,writeFileSync} from 'node:fs';createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);if(!m.id)return;let result={};if(m.method==='account/read')result={account:{type:'chatgpt',email:'fixture@example.test',token:'never-export'},requiresOpenaiAuth:true};if(m.method==='thread/start'){const p=process.env.CODEBRIEF_NATIVE_FIXTURE_COUNT;writeFileSync(p,String(Number(readFileSync(p,'utf8'))+1));result={thread:{id:'fixture-owned-thread'}};}console.log(JSON.stringify({id:m.id,result}));});\n`, { mode: 0o700 }); return { ...f, identity: config }; }
+function fixture() { const base = mkdtempSync(join(tmpdir(), 'connected-agent-')), root = join(base, 'repo'), state = join(base, 'private'), bin = join(base, 'bin'); mkdirSync(root); mkdirSync(bin); execFileSync('git', ['init', '-q', root]); const f = { base, root, state, bin, config: join(base, 'fixture.json'), server: join(base, 'server.json'), calls: join(base, 'calls.json'), count: join(base, 'count') }; const config = { runtimeId: randomUUID(), accountId: randomUUID(), orgId: randomUUID(), repoId: randomUUID(), sessionId: randomUUID() }; writeFileSync(f.config, JSON.stringify(config)); writeFileSync(f.server, '{}'); writeFileSync(f.count, '0'); writeFileSync(join(bin, 'claude'), `#!${node}\nimport {readFileSync} from 'node:fs';const config=JSON.parse(readFileSync(process.env.CODEBRIEF_NATIVE_FIXTURE_CONFIG,'utf8'));if(config.delayNativePid===process.ppid)await new Promise(resolve=>setTimeout(resolve,750));console.log(JSON.stringify({loggedIn:true,authMethod:'claude.ai',accessToken:'never-export'}));\n`, { mode: 0o700 }); writeFileSync(join(bin, 'codex'), `#!${node}\nimport {createInterface} from 'node:readline';import {readFileSync,writeFileSync} from 'node:fs';if(process.argv.includes('--version')){console.log('codex-cli 0.145.0');process.exit(0);}createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);if(!m.id)return;let result={};if(m.method==='account/read')result={account:{type:'chatgpt',email:'fixture@example.test',token:'never-export'},requiresOpenaiAuth:true};if(m.method==='thread/start'){const p=process.env.CODEBRIEF_NATIVE_FIXTURE_COUNT;writeFileSync(p,String(Number(readFileSync(p,'utf8'))+1));result={thread:{id:'019d1234-1111-7111-8111-111111111111',sessionId:'019d1234-2222-7222-8222-222222222222',cwd:m.params.cwd,cliVersion:'0.145.0'},cwd:m.params.cwd,model:'gpt-6.1',modelProvider:'openai',approvalPolicy:'on-request',sandbox:{type:'readOnly',networkAccess:false}};}if(m.method==='thread/read')result={thread:{id:'019d1234-1111-7111-8111-111111111111',sessionId:'019d1234-2222-7222-8222-222222222222',cwd:process.cwd(),cliVersion:'0.145.0'}};console.log(JSON.stringify({id:m.id,result}));});\n`, { mode: 0o700 }); return { ...f, identity: config }; }
 async function installClaim(f) { const { installConductorSession } = await import('./tandem-client.js'); installConductorSession(f.root, { launchId: randomUUID(), identity: { accountId: f.identity.accountId, orgId: f.identity.orgId, repoId: f.identity.repoId }, credential: 'a'.repeat(43), workspaceId: 'fixture-workspace', sessionId: 'provider-session', claim: { attemptId: randomUUID(), handoffId: randomUUID(), actionId: randomUUID(), actionVersion: 1, instanceId: randomUUID(), generation: 1, version: 1, leaseExpiresAt: '2099-01-01T00:00:00Z' } }, { baseDir: f.state }); }
 for (const host of ['claude', 'codex'])
     test(`${host} packaged dispatcher preserves exact native receipt after registration failure`, async () => { const f = fixture(); try {
@@ -123,7 +123,7 @@ for (const host of ['claude', 'codex'])
             config.denied = false;
             writeFileSync(f.config, JSON.stringify(config));
             const executable = join(f.bin, 'codex');
-            writeFileSync(executable, readFileSync(executable, 'utf8').replace("id:'fixture-owned-thread'", "id:null"), { mode: 0o700 });
+            writeFileSync(executable, readFileSync(executable, 'utf8').replace("id:'019d1234-1111-7111-8111-111111111111'", "id:null"), { mode: 0o700 });
             for (let i = 0; i < 2; i++)
                 assert.equal((await fixtureCommand(host, ['agents', 'serve', '--provider', 'codex', '--mode', 'owned-thread', '--once'], f)).code, 1);
             assert.equal(readFileSync(f.count, 'utf8'), '1');
@@ -241,4 +241,17 @@ test('stale native receipt preservation cannot overwrite replacement presence or
   preserveNativeReceipt(key,{...late,startups:{[startupKey]:{sessionId:randomUUID(),phase:'created',nativeSessionId:'wrong'}}},options);
   assert.equal(loadConnectedState(key,options).startups[startupKey].nativeSessionId,'exact-native-receipt');
  }finally{rmSync(f.base,{recursive:true,force:true});}
+});
+
+test('canonical Codex lost admission response cannot create a replacement owned thread', async()=>{
+ const f=fixture();try {
+  await installClaim(f);
+  assert.equal((await fixtureCommand('claude',['agents','connect','--provider','codex','--pairing',randomUUID()],f)).code,0);
+  const config=JSON.parse(readFileSync(f.config,'utf8'));config.failAdmission=true;writeFileSync(f.config,JSON.stringify(config));
+  assert.equal((await fixtureCommand('claude',['agents','serve','--provider','codex','--mode','owned-thread','--once'],f)).code,1);
+  assert.equal(readFileSync(f.count,'utf8'),'0');
+  config.failAdmission=false;writeFileSync(f.config,JSON.stringify(config));
+  const retry=await fixtureCommand('claude',['agents','serve','--provider','codex','--mode','owned-thread','--once'],f);
+  assert.equal(retry.code,1);assert.match(retry.error,/Connected agent command unavailable/);assert.equal(readFileSync(f.count,'utf8'),'0');
+ } finally {rmSync(f.base,{recursive:true,force:true});}
 });

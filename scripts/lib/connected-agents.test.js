@@ -54,9 +54,9 @@ const fetchImpl=async(url,init)=>{
 const initial=JSON.parse(readFileSync(configPath,'utf8'));
 const exit=await main(process.argv.slice(2),{loadCreds:()=>({apiKey:'fixture-capture',apiBaseUrl:'https://app.codebrief.ai'}),loadConfig:()=>({apiBaseUrl:'https://app.codebrief.ai',enabledRepos:initial.noOptIn?[]:['fixture/app']}),resolveRepo:()=>({fullName:'fixture/app'}),agentsContext:{root:${JSON.stringify(fixture.root)},options:{baseDir:${JSON.stringify(fixture.state)}},fetchImpl}});
 writeFileSync(${JSON.stringify(fixture.calls)},JSON.stringify(calls));process.exitCode=exit;`);
-    const child = spawn(node, [wrapper, ...args], { cwd: fixture.root, env: { ...process.env, PATH: `${fixture.bin}:${process.env.PATH}`, CODEBRIEF_NATIVE_FIXTURE_COUNT: fixture.count }, stdio: ['pipe', 'pipe', 'pipe'] }); let output = '', error = ''; child.stdout.on('data', c => output += c); child.stderr.on('data', c => error += c); child.stdin.end(hookInput ?? ''); const done = new Promise(resolveResult => child.on('exit', code => resolveResult({ code, output, error }))); return longLived ? { child, done, output: () => output } : done;
+    const child = spawn(node, [wrapper, ...args], { cwd: fixture.root, env: { ...process.env, PATH: `${fixture.bin}:${process.env.PATH}`, CODEBRIEF_NATIVE_FIXTURE_COUNT: fixture.count, CODEBRIEF_NATIVE_FIXTURE_CONFIG: fixture.config }, stdio: ['pipe', 'pipe', 'pipe'] }); let output = '', error = ''; child.stdout.on('data', c => output += c); child.stderr.on('data', c => error += c); child.stdin.end(hookInput ?? ''); const done = new Promise(resolveResult => child.on('exit', code => resolveResult({ code, output, error }))); return longLived ? { child, done, output: () => output } : done;
 }
-function fixture() { const base = mkdtempSync(join(tmpdir(), 'connected-agent-')), root = join(base, 'repo'), state = join(base, 'private'), bin = join(base, 'bin'); mkdirSync(root); mkdirSync(bin); execFileSync('git', ['init', '-q', root]); const f = { base, root, state, bin, config: join(base, 'fixture.json'), server: join(base, 'server.json'), calls: join(base, 'calls.json'), count: join(base, 'count') }; const config = { runtimeId: randomUUID(), accountId: randomUUID(), orgId: randomUUID(), repoId: randomUUID(), sessionId: randomUUID() }; writeFileSync(f.config, JSON.stringify(config)); writeFileSync(f.server, '{}'); writeFileSync(f.count, '0'); writeFileSync(join(bin, 'claude'), `#!${node}\nconsole.log(JSON.stringify({loggedIn:true,authMethod:'claude.ai',accessToken:'never-export'}));\n`, { mode: 0o700 }); writeFileSync(join(bin, 'codex'), `#!${node}\nimport {createInterface} from 'node:readline';import {readFileSync,writeFileSync} from 'node:fs';createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);if(!m.id)return;let result={};if(m.method==='account/read')result={account:{type:'chatgpt',email:'fixture@example.test',token:'never-export'},requiresOpenaiAuth:true};if(m.method==='thread/start'){const p=process.env.CODEBRIEF_NATIVE_FIXTURE_COUNT;writeFileSync(p,String(Number(readFileSync(p,'utf8'))+1));result={thread:{id:'fixture-owned-thread'}};}console.log(JSON.stringify({id:m.id,result}));});\n`, { mode: 0o700 }); return { ...f, identity: config }; }
+function fixture() { const base = mkdtempSync(join(tmpdir(), 'connected-agent-')), root = join(base, 'repo'), state = join(base, 'private'), bin = join(base, 'bin'); mkdirSync(root); mkdirSync(bin); execFileSync('git', ['init', '-q', root]); const f = { base, root, state, bin, config: join(base, 'fixture.json'), server: join(base, 'server.json'), calls: join(base, 'calls.json'), count: join(base, 'count') }; const config = { runtimeId: randomUUID(), accountId: randomUUID(), orgId: randomUUID(), repoId: randomUUID(), sessionId: randomUUID() }; writeFileSync(f.config, JSON.stringify(config)); writeFileSync(f.server, '{}'); writeFileSync(f.count, '0'); writeFileSync(join(bin, 'claude'), `#!${node}\nimport {readFileSync} from 'node:fs';const config=JSON.parse(readFileSync(process.env.CODEBRIEF_NATIVE_FIXTURE_CONFIG,'utf8'));if(config.delayNativePid===process.ppid)await new Promise(resolve=>setTimeout(resolve,750));console.log(JSON.stringify({loggedIn:true,authMethod:'claude.ai',accessToken:'never-export'}));\n`, { mode: 0o700 }); writeFileSync(join(bin, 'codex'), `#!${node}\nimport {createInterface} from 'node:readline';import {readFileSync,writeFileSync} from 'node:fs';createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);if(!m.id)return;let result={};if(m.method==='account/read')result={account:{type:'chatgpt',email:'fixture@example.test',token:'never-export'},requiresOpenaiAuth:true};if(m.method==='thread/start'){const p=process.env.CODEBRIEF_NATIVE_FIXTURE_COUNT;writeFileSync(p,String(Number(readFileSync(p,'utf8'))+1));result={thread:{id:'fixture-owned-thread'}};}console.log(JSON.stringify({id:m.id,result}));});\n`, { mode: 0o700 }); return { ...f, identity: config }; }
 async function installClaim(f) { const { installConductorSession } = await import('./tandem-client.js'); installConductorSession(f.root, { launchId: randomUUID(), identity: { accountId: f.identity.accountId, orgId: f.identity.orgId, repoId: f.identity.repoId }, credential: 'a'.repeat(43), workspaceId: 'fixture-workspace', sessionId: 'provider-session', claim: { attemptId: randomUUID(), handoffId: randomUUID(), actionId: randomUUID(), actionVersion: 1, instanceId: randomUUID(), generation: 1, version: 1, leaseExpiresAt: '2099-01-01T00:00:00Z' } }, { baseDir: f.state }); }
 for (const host of ['claude', 'codex'])
     test(`${host} packaged dispatcher preserves exact native receipt after registration failure`, async () => { const f = fixture(); try {
@@ -161,6 +161,19 @@ async function companionReady(process) {
  for (let i=0;i<100;i++) { if (process.output().includes('checkpoint_wait')) return; if (process.child.exitCode !== null) throw new Error('companion exited before ready'); await pause(20); }
  throw new Error('companion readiness timeout');
 }
+async function waitForAppliedRegistration(companion, auditPath, before) {
+ // Polling includes the 5s interval and native observation, not only the timer.
+ const deadline=Date.now()+20000;
+ while(Date.now()<deadline) {
+  const later=readFileSync(auditPath,'utf8').trim().split('\n').slice(before).map(JSON.parse);
+  if(companion.child.exitCode!==null||companion.child.signalCode!==null)
+   throw new Error(`replacement exited before successful polling: code=${companion.child.exitCode}, signal=${companion.child.signalCode}`);
+  if(later.some(x=>x.pid===companion.child.pid&&x.operation==='register'&&x.stage==='applied'))return later;
+  await pause(25);
+ }
+ const stages=readFileSync(auditPath,'utf8').trim().split('\n').slice(before).map(JSON.parse).filter(x=>x.pid===companion.child.pid).map(({operation,stage})=>({operation,stage}));
+ throw new Error(`replacement polling deadline exceeded: ${JSON.stringify(stages)}`);
+}
 for (const host of ['claude','codex']) test(`${host} long-lived companion excludes second serve and fences stale Stop/signal`, async () => {
  const f=fixture(), processes=[];
  try {
@@ -174,12 +187,13 @@ for (const host of ['claude','codex']) test(`${host} long-lived companion exclud
   assert.equal(rejected.code,1,'second companion must not become a second polling owner');
   assert.equal((await fixtureCommand(host,['agents','stop','--provider','claude'],f)).code,0);
   const replacement=await fixtureCommand(host,args,f,{longLived:true});processes.push(replacement);await companionReady(replacement);
+  // Deterministically exceed the former 0.5s observation allowance.
+  const config=JSON.parse(readFileSync(f.config,'utf8'));config.delayNativePid=replacement.child.pid;writeFileSync(f.config,JSON.stringify(config));
   const auditPath=join(f.base,'audit.jsonl');const before=readFileSync(auditPath,'utf8').trim().split('\n').length;
   old.child.kill('SIGINT');await old.done;
-  await pause(5500);
-  const later=readFileSync(auditPath,'utf8').trim().split('\n').slice(before).map(JSON.parse);
+  const later=await waitForAppliedRegistration(replacement,auditPath,before);
   assert.equal(later.some(x=>x.pid===old.child.pid),false,'stale sleeper/signal must issue no presence or teardown request');
-  assert.equal(later.some(x=>x.pid===replacement.child.pid&&x.operation==='register'),true,'replacement continues polling');
+  assert.equal(later.some(x=>x.pid===replacement.child.pid&&x.operation==='register'&&x.stage==='applied'),true,'replacement continues polling');
   assert.equal(readFileSync(f.count,'utf8'),'0');
  } finally { for (const p of processes) { if(p.child.exitCode===null)p.child.kill('SIGKILL');await p.done; } rmSync(f.base,{recursive:true,force:true}); }
 });

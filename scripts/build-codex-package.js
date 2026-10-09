@@ -7,10 +7,13 @@ const sourceRoot = join(packageRoot, "scripts", "lib");
 const targetRoot = join(packageRoot, "codex", "codebrief-capture", "scripts", "lib");
 const sharedFiles = [
   "agent-inbox.js",
+  "room-tools.js",
+  "room-discussion.js",
   "connected-agent-state.js",
   "connected-agent-client.js",
   "native-agent-runtime.js",
   "conductor-bootstrap.js",
+  "release-installation.js",
   "tandem-state.js",
   "tandem-scope.js",
   "tandem-checkpoint.js",

@@ -1,3 +1,5 @@
+import {parseRoomCommand,executeRoomCommand} from './room-discussion.js';
+import {readRoomToolInput} from './room-tools.js';
 import {readAgentMessageInput} from './agent-inbox.js';
 import {launchRelayRequest} from './conductor-bootstrap.js';
 import { randomUUID, randomBytes } from 'node:crypto';
@@ -37,7 +39,7 @@ function invalidateCompanion(key,context) {
 }
 async function request(context, path, body, state) { const controller = new AbortController(), timer = setTimeout(() => controller.abort(), Math.max(1, Math.min(10000, (context.deadline ?? Date.now() + 10000) - Date.now()))); try {
     requireCompanion(context);
-    const response = await (context.fetchImpl ?? fetch)(`${normalizeCodebriefApiBaseUrl(context.credentials.apiBaseUrl)}/api/capture/connected-agents/${path}`, { method: 'POST', redirect: 'error', signal: controller.signal, headers: { authorization: `Bearer ${context.credentials.apiKey}`, 'content-type': 'application/json', ...(state ? { 'x-codebrief-runtime-credential': state.nonce } : {}), ...(body.claim ? { 'x-codebrief-tandem-credential': context.tandemCredential } : {}) }, body: JSON.stringify({ repo: { fullName: context.repoFullName }, ...body, ...(context.companion&&(path==='sessions'||context.companionReady)?{companion:companionWire(context)}:{}), ...(context.invalidate?{invalidate:true}:{}) }) });
+    const response = await (context.fetchImpl ?? fetch)(`${normalizeCodebriefApiBaseUrl(context.credentials.apiBaseUrl)}/api/capture/${path.startsWith('rooms/')?path:'connected-agents/'+path}`, { method: 'POST', redirect: 'error', signal: controller.signal, headers: { authorization: `Bearer ${context.credentials.apiKey}`, 'content-type': 'application/json', ...(state ? { 'x-codebrief-runtime-credential': state.nonce } : {}), ...(body.claim ? { 'x-codebrief-tandem-credential': context.tandemCredential } : {}) }, body: JSON.stringify({ repo: { fullName: context.repoFullName }, ...body, ...(context.companion&&(path==='sessions'||context.companionReady)?{companion:companionWire(context)}:{}), ...(context.invalidate?{invalidate:true}:{}) }) });
     if (!response.ok)
         throw new ConnectedAgentClientError('connected_agent_rejected');
     const reader = response.body?.getReader();
@@ -51,7 +53,7 @@ async function request(context, path, body, state) { const controller = new Abor
             if (part.done)
                 break;
             bytes += part.value.length;
-            if (bytes > (['inbox','request','ack','reply'].includes(path)?131072:32768)) {
+            if (bytes > (path.startsWith('rooms/tools/')?262144:path.startsWith('rooms/')?102400:['inbox','request','ack','reply'].includes(path)?131072:32768)) {
                 await reader.cancel();
                 throw new ConnectedAgentClientError();
             }
@@ -62,7 +64,7 @@ async function request(context, path, body, state) { const controller = new Abor
         reader.releaseLock();
     }
     requireCompanion(context);
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks)));
 }
 catch (error) {
     if (error instanceof ConnectedAgentClientError)
@@ -102,17 +104,28 @@ async function runAgentsCommandUnlocked(args, context) {
     }
     if (!state?.runtimeId || state.provider !== provider)
         throw new ConnectedAgentClientError('runtime_not_connected');
-    if (['inbox','request','ack','reply'].includes(command)) {
+    if (['inbox','request','ack','reply','tool','rooms'].includes(command)) {
         const session=readConductorSession(context.root??process.cwd(),options);
         if(!session?.claim||session.identity.accountId!==state.identity.accountId||session.identity.orgId!==state.identity.orgId||session.identity.worktreeId!==worktreeIdentity(context.root??process.cwd(),options))throw new ConnectedAgentClientError('current_claim_required');
-        const input=command==='inbox'?undefined:readAgentMessageInput(command,option('--input'));
-        const cursor=option('--cursor');if(cursor&&!UUID.test(cursor))throw new ConnectedAgentClientError('cursor_invalid');
-        if(session.launchId)return launchRelayRequest({session,operation:command,payload:{claim:session.claim,...(command==='inbox'?{cursor:cursor??null}:{input})},fetchImpl:context.fetchImpl});
+        const discussion=command==='rooms'?parseRoomCommand(args):undefined;
+        const tool=command==='tool'?readRoomToolInput(option('--input')):undefined;
+        const input=command==='inbox'||tool||discussion?undefined:readAgentMessageInput(command,option('--input'));
+        const cursor=option('--cursor');if(cursor&&!discussion&&!UUID.test(cursor))throw new ConnectedAgentClientError('cursor_invalid');
+        if(discussion){
+          const transport=()=>session.launchId?launchRelayRequest({session,operation:'room_'+discussion.operation,payload:{claim:session.claim,roomId:discussion.roomId,input:discussion.input},fetchImpl:context.fetchImpl}):request({...context,tandemCredential:session.credential},'rooms/'+discussion.operation,{runtimeId:state.runtimeId,sessionId:state.startups?.[JSON.stringify([session.claim.attemptId,session.claim.instanceId,session.claim.generation])]?.sessionId,claim:session.claim,workspaceId:session.workspaceId??session.identity.worktreeId,roomId:discussion.roomId,input:discussion.input},state);
+          if(!session.launchId){
+            const startup=state.startups?.[JSON.stringify([session.claim.attemptId,session.claim.instanceId,session.claim.generation])];
+            if(state.paused||startup?.phase!=='registered'||!startup.nativeSessionId)throw new ConnectedAgentClientError('session_unavailable');
+            if(context.hookSessionId&&startup.nativeSessionId!==context.hookSessionId)throw new ConnectedAgentClientError('checkpoint_session_conflict');
+          }
+          return executeRoomCommand(discussion,transport);
+        }
+        if(session.launchId)return launchRelayRequest({session,operation:tool?'room_tool':command,payload:{claim:session.claim,...(tool?{tool}:command==='inbox'?{cursor:cursor??null}:{input})},fetchImpl:context.fetchImpl});
         const startup=state.startups?.[JSON.stringify([session.claim.attemptId,session.claim.instanceId,session.claim.generation])];
         if(state.paused)throw new ConnectedAgentClientError('session_unavailable');
         if(startup?.phase!=='registered'||!startup.nativeSessionId)throw new ConnectedAgentClientError(context.hookSessionId&&!startup?'checkpoint_session_required':'session_unavailable');
         if(context.hookSessionId&&startup.nativeSessionId!==context.hookSessionId)throw new ConnectedAgentClientError('checkpoint_session_conflict');
-        return request({...context,tandemCredential:session.credential},command,{runtimeId:state.runtimeId,sessionId:startup.sessionId,claim:session.claim,workspaceId:session.workspaceId??session.identity.worktreeId,...(command==='inbox'?{...(cursor?{cursor}:{}),...(context.hookSessionId?{nativeSessionId:context.hookSessionId}:{})}:{input})},state);
+        return request({...context,tandemCredential:session.credential},tool?'rooms/tools/'+tool.operation:command,{runtimeId:state.runtimeId,sessionId:startup.sessionId,claim:session.claim,workspaceId:session.workspaceId??session.identity.worktreeId,...(tool?{roomId:tool.roomId,...(tool.operation==='invoke'?{input:tool.input}:{operationId:tool.operationId})}:command==='inbox'?{...(cursor?{cursor}:{}),...(context.hookSessionId?{nativeSessionId:context.hookSessionId}:{})}:{input})},state);
     }
     if (command === 'status') {
         const observation = await observeNative(provider);
@@ -196,11 +209,13 @@ async function runAgentsCommandUnlocked(args, context) {
 export async function runAgentsCommand(args, context) {
  const providerIndex=args.indexOf('--provider');
  if(args[providerIndex+1]==='conductor'){
-  if(!['inbox','request','ack','reply'].includes(args[0]))throw new ConnectedAgentClientError('agents_command_invalid');
+  if(!['inbox','request','ack','reply','tool','rooms'].includes(args[0]))throw new ConnectedAgentClientError('agents_command_invalid');
   const session=readConductorSession(context.root??process.cwd(),context.options);if(!session?.launchId||!session.claim||!session.credential)throw new ConnectedAgentClientError('current_claim_required');
+  if(args[0]==='rooms'){const command=parseRoomCommand(args);return executeRoomCommand(command,()=>launchRelayRequest({session,operation:'room_'+command.operation,payload:{claim:session.claim,roomId:command.roomId,input:command.input},fetchImpl:context.fetchImpl}));}
   const option=name=>args[args.indexOf(name)+1];const cursor=args.includes('--cursor')?option('--cursor'):null;if(cursor&&!UUID.test(cursor))throw new ConnectedAgentClientError('cursor_invalid');
-  const input=args[0]==='inbox'?undefined:readAgentMessageInput(args[0],option('--input'));
-  return launchRelayRequest({session,operation:args[0],payload:{claim:session.claim,...(args[0]==='inbox'?{cursor}:{input})},fetchImpl:context.fetchImpl});
+  const tool=args[0]==='tool'?readRoomToolInput(option('--input')):undefined;
+  const input=args[0]==='inbox'||tool?undefined:readAgentMessageInput(args[0],option('--input'));
+  return launchRelayRequest({session,operation:tool?'room_tool':args[0],payload:{claim:session.claim,...(tool?{tool}:args[0]==='inbox'?{cursor}:{input})},fetchImpl:context.fetchImpl});
  }
  const i=args.indexOf('--provider'),provider=args[i+1];if(!context.credentials?.apiKey||!['claude','codex'].includes(provider))throw new ConnectedAgentClientError('capture_login_and_provider_required');
  const key=localConnectionKey(context.credentials.apiKey,provider),id=`${key.slice(0,8)}-${key.slice(8,12)}-4${key.slice(13,16)}-8${key.slice(17,20)}-${key.slice(20,32)}`;

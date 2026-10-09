@@ -19,7 +19,7 @@ const releaseHome=mkdtempSync(join(tmpdir(),'capture-bootstrap-release-'));
 const releaseSource=join(releaseHome,'artifact');
 const releasePin=buildStandaloneRelease({source:fileURLToPath(new URL('../../',import.meta.url)),destination:releaseSource}).manifestSha256;
 installCaptureRelease({source:releaseSource,manifestSha256:releasePin,home:releaseHome});
-const releaseRoot=join(releaseHome,'.codebrief/capture/releases/0.10.0');
+const releaseRoot=join(releaseHome,'.codebrief/capture/releases/0.10.1');
 import {bootstrapConductorCapture} from './conductor-bootstrap.js';
 test('bootstrap rejects absent trusted installation pin before token parsing or network',async()=>{
  let calls=0,tokenReads=0;
@@ -40,7 +40,7 @@ test('bootstrap rejects mismatched trusted pin, incomplete install and self-cons
  const file=manifest.files.find(file=>file.path==='scripts/codebrief-cli.js');const bytes=Buffer.from('self-consistent forged runtime');
  writeFileSync(join(modified,file.path),bytes);file.size=bytes.length;file.sha256=createHash('sha256').update(bytes).digest('hex');
  const manifestBytes=Buffer.from(JSON.stringify(manifest)+'\n'),localHash=createHash('sha256').update(manifestBytes).digest('hex');
- writeFileSync(join(modified,'release-manifest.json'),manifestBytes);writeFileSync(join(modified,'.codebrief-installation.json'),JSON.stringify({schemaVersion:1,version:'0.10.0',manifestSha256:localHash}));
+ writeFileSync(join(modified,'release-manifest.json'),manifestBytes);writeFileSync(join(modified,'.codebrief-installation.json'),JSON.stringify({schemaVersion:1,version:'0.10.1',manifestSha256:localHash}));
  await denied(modified,releasePin);assert.equal(calls,0);assert.equal(tokenReads,0);
 });
 for(const [host,main] of [['claude',claudeMain],['codex',codexMain]])test(`${host} bootstrap CLI denies manually supplied provider IDs`,async()=>{

@@ -24,3 +24,22 @@ export function validateRoomToolInput(v){
 export function readRoomToolInput(file){
  let fd;try{if(typeof file!=='string'||!file)invalid();fd=openSync(file,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);const stat=fstatSync(fd);if(!stat.isFile()||stat.size>8192)invalid();const raw=Buffer.alloc(8193);let size=0;while(size<raw.length){const n=readSync(fd,raw,size,raw.length-size,null);if(!n)break;size+=n;}if(size>8192)invalid();return validateRoomToolInput(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(raw.subarray(0,size))));}catch{invalid();}finally{if(fd!==undefined)closeSync(fd);}
 }
+
+/** Historical identity is unavailable, never a substitute for current sender authority. */
+export function validateRoomToolResponse(value){
+ const actor=value?.invocation?.actor;
+ const keys=['kind','userId','sessionId','projectId','actionId','attemptId','generation','provenance'];
+ if(actor?.kind==='unavailable'){
+  exact(actor,[...keys,'originalKind']);
+  if(!['human','coding_agent'].includes(actor.originalKind)||keys.filter(k=>k!=='kind').some(k=>actor[k]!==null))invalid();
+ }else{
+  exact(actor,keys);text(actor.userId,255);
+  if(actor.kind==='human'){if(keys.filter(k=>!['kind','userId'].includes(k)).some(k=>actor[k]!==null))invalid();}
+  else if(actor.kind==='coding_agent'){
+   for(const k of ['sessionId','projectId','actionId','attemptId'])if(!UUID.test(actor[k]))invalid();
+   if(!Number.isSafeInteger(actor.generation)||actor.generation<1)invalid();
+   const p=exact(actor.provenance,['provider','model','runtimeId']);text(p.provider,255);if(p.model!==null)text(p.model,255);if(p.runtimeId!==null)text(p.runtimeId,255);
+  }else invalid();
+ }
+ return value;
+}

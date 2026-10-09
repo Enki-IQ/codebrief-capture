@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {constants,closeSync,fstatSync,lstatSync,openSync,readSync,readdirSync,mkdirSync,writeFileSync} from 'node:fs';
 import {dirname,isAbsolute,join,resolve} from 'node:path';
-const VERSION='0.10.0',LIMIT=8388608,MANIFEST='release-manifest.json',RECEIPT='.codebrief-installation.json';
+const VERSION='0.10.1',LIMIT=8388608,MANIFEST='release-manifest.json',RECEIPT='.codebrief-installation.json';
 const invalid=()=>{throw new Error('capture_release_invalid');};
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 function exact(value,keys){return value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(k=>Object.hasOwn(value,k));}
@@ -63,6 +63,6 @@ export function installCaptureRelease({source,manifestSha256,home}) {
   return verifyCaptureRelease({root:destination,manifestSha256});
  }catch{
   // Never remove a directory another process might have altered. Completion remains absent.
-  throw new Error(created?'capture_installation_incomplete: inspect and remove only the incomplete 0.10.0 installation before retrying':'capture_installation_rejected');
+  throw new Error(created?'capture_installation_incomplete: inspect and remove only the incomplete 0.10.1 installation before retrying':'capture_installation_rejected');
  }
 }

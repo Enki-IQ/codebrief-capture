@@ -1,5 +1,5 @@
 import {parseRoomCommand,executeRoomCommand} from './room-discussion.js';
-import {readRoomToolInput} from './room-tools.js';
+import {readRoomToolInput,validateRoomToolResponse} from './room-tools.js';
 import {readAgentMessageInput} from './agent-inbox.js';
 import {launchRelayRequest} from './conductor-bootstrap.js';
 import { randomUUID, randomBytes } from 'node:crypto';
@@ -120,12 +120,12 @@ async function runAgentsCommandUnlocked(args, context) {
           }
           return executeRoomCommand(discussion,transport);
         }
-        if(session.launchId)return launchRelayRequest({session,operation:tool?'room_tool':command,payload:{claim:session.claim,...(tool?{tool}:command==='inbox'?{cursor:cursor??null}:{input})},fetchImpl:context.fetchImpl});
+        if(session.launchId){const result=await launchRelayRequest({session,operation:tool?'room_tool':command,payload:{claim:session.claim,...(tool?{tool}:command==='inbox'?{cursor:cursor??null}:{input})},fetchImpl:context.fetchImpl});return tool?validateRoomToolResponse(result):result;}
         const startup=state.startups?.[JSON.stringify([session.claim.attemptId,session.claim.instanceId,session.claim.generation])];
         if(state.paused)throw new ConnectedAgentClientError('session_unavailable');
         if(startup?.phase!=='registered'||!startup.nativeSessionId)throw new ConnectedAgentClientError(context.hookSessionId&&!startup?'checkpoint_session_required':'session_unavailable');
         if(context.hookSessionId&&startup.nativeSessionId!==context.hookSessionId)throw new ConnectedAgentClientError('checkpoint_session_conflict');
-        return request({...context,tandemCredential:session.credential},tool?'rooms/tools/'+tool.operation:command,{runtimeId:state.runtimeId,sessionId:startup.sessionId,claim:session.claim,workspaceId:session.workspaceId??session.identity.worktreeId,...(tool?{roomId:tool.roomId,...(tool.operation==='invoke'?{input:tool.input}:{operationId:tool.operationId})}:command==='inbox'?{...(cursor?{cursor}:{}),...(context.hookSessionId?{nativeSessionId:context.hookSessionId}:{})}:{input})},state);
+        const result=await request({...context,tandemCredential:session.credential},tool?'rooms/tools/'+tool.operation:command,{runtimeId:state.runtimeId,sessionId:startup.sessionId,claim:session.claim,workspaceId:session.workspaceId??session.identity.worktreeId,...(tool?{roomId:tool.roomId,...(tool.operation==='invoke'?{input:tool.input}:{operationId:tool.operationId})}:command==='inbox'?{...(cursor?{cursor}:{}),...(context.hookSessionId?{nativeSessionId:context.hookSessionId}:{})}:{input})},state);return tool?validateRoomToolResponse(result):result;
     }
     if (command === 'status') {
         const observation = await observeNative(provider);
@@ -215,7 +215,7 @@ export async function runAgentsCommand(args, context) {
   const option=name=>args[args.indexOf(name)+1];const cursor=args.includes('--cursor')?option('--cursor'):null;if(cursor&&!UUID.test(cursor))throw new ConnectedAgentClientError('cursor_invalid');
   const tool=args[0]==='tool'?readRoomToolInput(option('--input')):undefined;
   const input=args[0]==='inbox'||tool?undefined:readAgentMessageInput(args[0],option('--input'));
-  return launchRelayRequest({session,operation:tool?'room_tool':args[0],payload:{claim:session.claim,...(tool?{tool}:args[0]==='inbox'?{cursor}:{input})},fetchImpl:context.fetchImpl});
+  const result=await launchRelayRequest({session,operation:tool?'room_tool':args[0],payload:{claim:session.claim,...(tool?{tool}:args[0]==='inbox'?{cursor}:{input})},fetchImpl:context.fetchImpl});return tool?validateRoomToolResponse(result):result;
  }
  const i=args.indexOf('--provider'),provider=args[i+1];if(!context.credentials?.apiKey||!['claude','codex'].includes(provider))throw new ConnectedAgentClientError('capture_login_and_provider_required');
  const key=localConnectionKey(context.credentials.apiKey,provider),id=`${key.slice(0,8)}-${key.slice(8,12)}-4${key.slice(13,16)}-8${key.slice(17,20)}-${key.slice(20,32)}`;

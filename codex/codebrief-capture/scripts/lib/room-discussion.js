@@ -28,8 +28,9 @@ export function validateRoomResponse(command,value){
  for(const item of r[stream]){
  uuid(item.id);positive(item.sequence);if(item.sequence<=prior)invalid();prior=item.sequence;date(item.createdAt);
  if(stream==='messages'){
- exact(item,['id','sequence','canErase','author','provenance','text','erased','createdAt']);bool(item.canErase);bool(item.erased);const author=exact(item.author,['userId','label']);text(author.userId,255);text(author.label,255);
+ exact(item,['id','sequence','canErase','author','provenance','text','erased','createdAt']);bool(item.canErase);bool(item.erased);const author=exact(item.author,['userId','label']);text(author.label,255);if(author.userId===null){const p=exact(item.provenance,['kind','originalKind','reason']);if(author.label!=='Deleted member'||p.kind!=='unavailable'||!['human','agent'].includes(p.originalKind)||p.reason!=='author_deleted')invalid();}else{text(author.userId,255);
  if(item.provenance?.kind==='human')exact(item.provenance,['kind']);else{const p=exact(item.provenance,['kind','sessionId','actionId','attemptId','generation','provider','model']);if(p.kind!=='agent')invalid();uuid(p.sessionId);uuid(p.actionId);uuid(p.attemptId);positive(p.generation);text(p.provider,255);if(p.model!==null)text(p.model,255);}
+ }
  if(item.text!==null)text(item.text,8192);if(item.erased&&item.text!==null)invalid();
  }else if(item.kind==='handoff'){
  exact(item,['id','sequence','kind','handoffId','evidence','createdAt']);uuid(item.handoffId);if(item.evidence!=='reported')invalid();
